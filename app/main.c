@@ -5,7 +5,7 @@
 
 int main(void)
 {
-  float freq, amplitude, duree;
+  float freq, amplitude, duree, volume;
   int onde_type;
   //float freq, amplitude, duree, onde_type, volume;
 
@@ -18,8 +18,8 @@ int main(void)
   printf("Entrez la durée (secondes) : ");
   scanf("%f", &duree);
   
-  //printf("Entrez volume (0.0% à 100%) : ");
-  //scanf("%f", &volume);
+  printf("Entrez volume (0.0 a 100) : ");
+  scanf("%f", &volume);
 
   int num_samples = (int)(SAMPLE_RATE * duree);
   FILE *f = fopen("output.wav", "wb");
@@ -49,7 +49,7 @@ int main(void)
     else if (onde_type == 4)
       sample = triangle_wave(freq, i);
 
-    buffer[i] = sample * amplitude; // On stocke dans le buffer
+    buffer[i] = sample * amplitude * volume; // On stocke dans le buffer
   }
 
   // 3. Produire la sortie à partir du buffer
