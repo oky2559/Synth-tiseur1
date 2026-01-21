@@ -3,8 +3,8 @@
 
 #include <math.h>
 #include <stdint.h>
+#include "custom_math.h"
 
-#define PI 3.14159265358979323846
 #define SAMPLE_RATE 44100 // Fréquence d'échantillonnage
 
 // Génère une onde sinusoïdale
