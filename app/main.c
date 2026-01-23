@@ -5,6 +5,8 @@
 #include "oscillateurs.h"
 #include "wav_helper.h"
 
+#define FADE_DURATION 1.5f
+
 /* Conversion volume (0–100) -> gain (0.0–1.0) */
 static float volume_to_gain(int volume_percent)
 {
@@ -57,7 +59,6 @@ int main(void)
   float freq, amplitude, duree;
   int onde_type;
   int volume_percent;
-  float fade_duration;
 
   /* --- Entrées utilisateur --- */
   printf("Entrez la fréquence (Hz) : ");
@@ -74,9 +75,6 @@ int main(void)
 
   printf("Entrez le type d'onde (1=sinusoïde, 2=carrée, 3=dents de scie, 4=triangulaire) : ");
   scanf("%d", &onde_type);
-
-  printf("Durée du fondu (fade-in / fade-out) en secondes : ");
-  scanf("%f", &fade_duration);
 
   float volume_gain = volume_to_gain(volume_percent);
 
@@ -109,7 +107,7 @@ int main(void)
       sample = triangle_wave(freq, i);
 
     /* 2) Enveloppe simple (fade-in / fade-out) */
-    float env = envelope_fade(i, num_samples, SAMPLE_RATE, fade_duration);
+    float env = envelope_fade(i, num_samples, SAMPLE_RATE, FADE_DURATION);
 
     /* 3) Contrôle du volume du WAV */
     buffer[i] = sample * amplitude * env * volume_gain;
