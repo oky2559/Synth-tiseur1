@@ -1,21 +1,65 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
+
 #include "oscillateurs.h"
 #include "wav_helper.h"
 
-/* AJOUT */
-#include "synth_chain.h"
+/* Conversion volume (0–100) -> gain (0.0–1.0) */
+static float volume_to_gain(int volume_percent)
+{
+  if (volume_percent < 0)
+    volume_percent = 0;
+  if (volume_percent > 100)
+    volume_percent = 100;
+  return (float)volume_percent / 100.0f;
+}
+
+/* Clamp sécurité */
+static float clampf(float x, float lo, float hi)
+{
+  if (x < lo)
+    return lo;
+  if (x > hi)
+    return hi;
+  return x;
+}
+
+/*
+ * Enveloppe simple : fade-in / fade-out
+ * fade_s = durée du fondu (secondes)
+ */
+static float envelope_fade(int i, int total_samples, int sample_rate, float fade_s)
+{
+  int fade_samples = (int)(fade_s * sample_rate);
+
+  if (fade_samples <= 0)
+    return 1.0f;
+
+  /* Fade-in */
+  if (i < fade_samples)
+  {
+    return (float)i / (float)fade_samples;
+  }
+
+  /* Fade-out */
+  if (i >= total_samples - fade_samples)
+  {
+    return (float)(total_samples - i) / (float)fade_samples;
+  }
+
+  /* Plateau */
+  return 1.0f;
+}
 
 int main(void)
 {
   float freq, amplitude, duree;
   int onde_type;
-
-  /* AJOUT */
   int volume_percent;
-  int env_type; /* 0=none, 1=AR, 2=ADSR */
-  float attack_s = 0.0f, decay_s = 0.0f, sustain_level = 1.0f, release_s = 0.0f;
+  float fade_duration;
 
+  /* --- Entrées utilisateur --- */
   printf("Entrez la fréquence (Hz) : ");
   scanf("%f", &freq);
 
@@ -25,56 +69,38 @@ int main(void)
   printf("Entrez la durée (secondes) : ");
   scanf("%f", &duree);
 
-  /* AJOUT : volume logiciel */
-  printf("Entrez le volume (0 à 100) : ");
+  printf("Entrez le volume du WAV (0 à 100) : ");
   scanf("%d", &volume_percent);
-  float volume_gain = volume_to_gain(volume_percent);
-
-  int num_samples = (int)(SAMPLE_RATE * duree);
-  FILE *f = fopen("output.wav", "wb");
-
-  if (f == NULL)
-  {
-    printf("Erreur: impossible d'ouvrir le fichier\n");
-    return 1;
-  }
 
   printf("Entrez le type d'onde (1=sinusoïde, 2=carrée, 3=dents de scie, 4=triangulaire) : ");
   scanf("%d", &onde_type);
 
-  /* AJOUT : choix enveloppe */
-  printf("Choisir l'enveloppe (0=aucune, 1=Attack/Release, 2=ADSR) : ");
-  scanf("%d", &env_type);
+  printf("Durée du fondu (fade-in / fade-out) en secondes : ");
+  scanf("%f", &fade_duration);
 
-  if (env_type == 1)
+  float volume_gain = volume_to_gain(volume_percent);
+
+  int num_samples = (int)(SAMPLE_RATE * duree);
+
+  FILE *f = fopen("output.wav", "wb");
+  if (f == NULL)
   {
-    printf("Attack (secondes) : ");
-    scanf("%f", &attack_s);
-    printf("Release (secondes) : ");
-    scanf("%f", &release_s);
-  }
-  else if (env_type == 2)
-  {
-    printf("Attack (secondes) : ");
-    scanf("%f", &attack_s);
-    printf("Decay (secondes) : ");
-    scanf("%f", &decay_s);
-    printf("Sustain level (0.0 à 1.0) : ");
-    scanf("%f", &sustain_level);
-    printf("Release (secondes) : ");
-    scanf("%f", &release_s);
+    printf("Erreur : impossible d'ouvrir le fichier output.wav\n");
+    return 1;
   }
 
-  // 1. Allouer le buffer en mémoire
   float *buffer = malloc(num_samples * sizeof(float));
   if (buffer == NULL)
+  {
+    fclose(f);
     return 1;
+  }
 
-  // 2. Remplir le buffer avec les calculs + enveloppe + volume
+  /* --- Génération du signal : chaîne de synthèse --- */
   for (int i = 0; i < num_samples; i++)
   {
+    /* 1) Oscillateur */
     float sample = sine_wave(freq, i);
-
     if (onde_type == 2)
       sample = square_wave(freq, i);
     else if (onde_type == 3)
@@ -82,33 +108,26 @@ int main(void)
     else if (onde_type == 4)
       sample = triangle_wave(freq, i);
 
-    /* AJOUT : enveloppe */
-    float env = 1.0f;
-    if (env_type == 1)
-    {
-      env = envelope_ar(i, num_samples, SAMPLE_RATE, attack_s, release_s);
-    }
-    else if (env_type == 2)
-    {
-      env = envelope_adsr(i, num_samples, SAMPLE_RATE, attack_s, decay_s, sustain_level, release_s);
-    }
+    /* 2) Enveloppe simple (fade-in / fade-out) */
+    float env = envelope_fade(i, num_samples, SAMPLE_RATE, fade_duration);
 
-    /* AJOUT : contrôle du volume (gain) */
+    /* 3) Contrôle du volume du WAV */
     buffer[i] = sample * amplitude * env * volume_gain;
   }
 
-  // 3. Produire la sortie à partir du buffer
+  /* --- Écriture du WAV --- */
   write_wav_header(f, num_samples);
+
   for (int i = 0; i < num_samples; i++)
   {
-    float s = clampf(buffer[i], -1.0f, 1.0f); /* AJOUT : sécurité */
-    int16_t int_sample = (int16_t)(s * 32767);
-    fwrite(&int_sample, 2, 1, f);
+    float s = clampf(buffer[i], -1.0f, 1.0f);
+    int16_t int_sample = (int16_t)(s * 32767.0f);
+    fwrite(&int_sample, sizeof(int16_t), 1, f);
   }
 
-  free(buffer); // Ne pas oublier de libérer la mémoire
-
+  free(buffer);
   fclose(f);
+
   printf("Fichier output.wav généré !\n");
   return 0;
 }

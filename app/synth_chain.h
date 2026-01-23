@@ -1,9 +1,7 @@
 #ifndef SYNTH_CHAIN_H
 #define SYNTH_CHAIN_H
 
-#include <stdint.h>
-
-/* Clamp simple pour éviter les dépassements avant conversion int16 */
+/* Clamp pour rester dans [-1, 1] avant conversion en int16 */
 static inline float clampf(float x, float lo, float hi)
 {
     if (x < lo)
@@ -23,11 +21,7 @@ static inline float volume_to_gain(int volume_percent)
     return (float)volume_percent / 100.0f;
 }
 
-/*
- * Enveloppe AR (Attack/Release) :
- * - attack_s : montée linéaire de 0 à 1
- * - release_s : descente linéaire vers 0 sur la fin du son
- */
+/* Enveloppe simple Attack/Release (linéaire) */
 static inline float envelope_ar(int i, int total_samples, int sample_rate,
                                 float attack_s, float release_s)
 {
@@ -47,32 +41,26 @@ static inline float envelope_ar(int i, int total_samples, int sample_rate,
         g = (float)i / (float)attack_n; /* 0 -> 1 */
     }
 
-    /* Release (sur la fin) */
+    /* Release sur la fin */
     if (release_n > 0)
     {
         int release_start = total_samples - release_n;
         if (release_start < 0)
             release_start = 0;
+
         if (i >= release_start)
         {
-            int t = i - release_start;                        /* 0 -> release_n */
+            int t = i - release_start;                        /* 0..release_n */
             float rel = 1.0f - ((float)t / (float)release_n); /* 1 -> 0 */
-            g = (g < rel) ? g : rel;                          /* combine sans dépasser */
+            if (rel < g)
+                g = rel;
         }
     }
 
     return clampf(g, 0.0f, 1.0f);
 }
 
-/*
- * Enveloppe ADSR :
- * - attack_s : 0 -> 1
- * - decay_s : 1 -> sustain_level
- * - sustain_level : niveau 0..1
- * - release_s : sustain_level -> 0 sur la fin
- *
- * Remarque : la phase sustain "remplit" le temps restant.
- */
+/* Enveloppe ADSR simple */
 static inline float envelope_adsr(int i, int total_samples, int sample_rate,
                                   float attack_s, float decay_s,
                                   float sustain_level, float release_s)
@@ -90,11 +78,11 @@ static inline float envelope_adsr(int i, int total_samples, int sample_rate,
 
     sustain_level = clampf(sustain_level, 0.0f, 1.0f);
 
+    /* Release sur la fin */
     int release_start = total_samples - r;
     if (release_start < 0)
         release_start = 0;
 
-    /* Phase Release (prioritaire sur la fin) */
     if (r > 0 && i >= release_start)
     {
         int t = i - release_start; /* 0..r */
@@ -114,7 +102,7 @@ static inline float envelope_adsr(int i, int total_samples, int sample_rate,
     int decay_end = a + d;
     if (d > 0 && i >= decay_start && i < decay_end)
     {
-        int t = i - decay_start; /* 0..d */
+        int t = i - decay_start;
         float g = 1.0f + (sustain_level - 1.0f) * ((float)t / (float)d);
         return clampf(g, 0.0f, 1.0f);
     }
